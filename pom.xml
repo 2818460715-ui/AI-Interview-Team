@@ -8,7 +8,7 @@
     </modules>
 	<parent>
 		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-parent</artifactId>
+		<artifactId>spring-boot-starter-parent</artifactId>F
 		<version>3.4.0</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
@@ -29,10 +29,26 @@
 		<java.version>21</java.version>
 	</properties>
 
+<!--	<repositories>-->
+<!--		<repository>-->
+<!--			<id>central</id>-->
+<!--			<url>https://repo1.maven.org/maven2</url>-->
+<!--		</repository>-->
+<!--			<repository>-->
+<!--				<id>spring-releases</id>-->
+<!--				<url>https://repo.spring.io/release</url>-->
+<!--			</repository>-->
+<!--	</repositories>-->
+
+
 	<repositories>
 		<repository>
-			<id>central</id>
-			<url>https://repo1.maven.org/maven2</url>
+			<id>aliyun-public</id>
+			<url>https://maven.aliyun.com/repository/public</url>
+		</repository>
+		<repository>
+			<id>aliyun-spring</id>
+			<url>https://maven.aliyun.com/repository/spring</url>
 		</repository>
 	</repositories>
 </project>

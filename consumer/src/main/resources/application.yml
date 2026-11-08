@@ -1,27 +1,53 @@
+server:
+  port: 8088
+  address: 0.0.0.0
+
 spring:
   mail:
     protocol: smtp                   # 邮件协议
-    host: smtp.163.com               # smtp 服务器地址 （163邮箱为例）
-    port: 25                         # 端口号（163邮箱为例）
-    username: ${USER_NAME:}          # 发送人邮箱地址（未配置时邮件不可用，但不影响启动）
-    password: ${PASS_WORD:}          # 授权码
-    default-encoding: utf-8          # 编码字符集
-    debug: true                      # 开启debug模式用户会完整打印邮件发送过程的日志
-
+    host: smtp.163.com               # smtp 服务器地址（163邮箱）
+    port: 465                        # 改用SSL端口，规避云服务器25端口封禁问题
+    username: ${USER_NAME:}          # 发送邮箱，环境变量优先，为空时邮件功能失效但项目正常启动
+    password: ${PASS_WORD:}          # 163邮箱【授权码】≠登录密码
+    default-encoding: utf-8          # 编码
+    debug: true                      # 开启邮件debug日志，会打印SMTP交互详情
+    properties:
+      mail:
+        smtp:
+          ssl:
+            enable: true
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/interview}
     username: ${DATABASE_USERNAME:postgres}
     password: ${DATABASE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
     hikari:
-      connection-init-sql: "CREATE EXTENSION IF NOT EXISTS vector;"
+    # connection-init-sql: "CREATE EXTENSION IF NOT EXISTS vector;"
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:123456} # 刚才查到的redis密码
+      database: ${REDIS_DB:0}
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: 300ms
   ai:
-    vectorstore:
-      pgvector:
-        index-type: HNSW
-        distance-type: COSINE_DISTANCE
-        initialize-schema: true
-        dimensions: 1536
-        schema-name: public
-        table-name: vector_store
-        max-document-batch-size: 10000 # Optional: Maximum number of documents per batch
+    dashscope:
+      api-key: sk-ws-H.YEHIEPL.AJ2l.MEYCIQDdr_fQmuW4wKTyOuV6jYaHfdS00pq8gBXIDhPXvV7UlQIhAIz1tPDbvH_H_aNeJycrUfExngWPoVVB4eFxhDnbOH37
+    chat:
+    # api-key: sk-xxxxxxxxxxxx
+    # pgvector向量库配置，取消注释时注意缩进对齐
+    # vectorstore:
+    #   pgvector:
+    #     index-type: HNSW
+    #     distance-type: COSINE_DISTANCE
+    #     initialize-schema: true
+    #     dimensions: 1536
+    #     schema-name: public
+    #     table-name: vector_store
+    #     max-document-batch-size: 10000
