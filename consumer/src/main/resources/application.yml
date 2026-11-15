@@ -1,0 +1,68 @@
+server:
+  port: 8088
+  address: 0.0.0.0
+
+spring:
+  mail:
+    protocol: smtp
+    host: smtp.163.com
+    port: 465
+    username: ${USER_NAME:}
+    password: ${PASS_WORD:}
+    default-encoding: utf-8
+    debug: true
+    properties:
+      mail:
+        smtp:
+          ssl:
+            enable: true
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/interview}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+    # connection-init-sql: "CREATE EXTENSION IF NOT EXISTS vector;"
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DB:0}
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: 300ms
+
+# ai 是顶级，和 spring、server 平级！
+ai:
+  debug:
+    echo-mode: false # true=回声调试，不调用大模型；调试完成改为 false
+  dashscope:
+    api-key: sk-ws-H.YEHIEPL.AJ2l.MEYCIQDdr_fQmuW4wKTyOuV6jYaHfdS00pq8gBXIDhPXvV7UlQIhAIz1tPDbvH_H_aNeJycrUfExngWPoVVB4eFxhDnbOH37
+    base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    options:
+      model: qwen-plus
+      temperature: 0.7
+      top_p: 0.8
+      max-tokens: 800
+
+# pgvector 向量库，后续要用再取消注释
+# vectorstore:
+#   pgvector:
+#     index-type: HNSW
+#     distance-type: COSINE_DISTANCE
+#     initialize-schema: true
+#     dimensions: 1536
+#     schema-name: public
+#     table-name: vector_store
+#     max-document-batch-size: 10000
+
+# ========== 新增：功能开关 ==========
+feature:
+  enable-free-chat: false
+  enable-cohort: false
+  enable-code-practice: false

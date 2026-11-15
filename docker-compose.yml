@@ -1,0 +1,111 @@
+name: light-interview
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: light-interview-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-interview}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-interview}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: light-interview-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # S3-compatible object storage for development.
+  # MinIO 官方镜像已从 Docker Hub 下架（minio/minio 返回 access denied），
+  # 这里改用 adobe/s3mock：同样走 S3 协议，适合本地开发与集成测试。
+  # 需要真实 MinIO 时把 image 换回自己的镜像源并保持同一组 MEDIA_S3_* 变量即可。
+  s3mock:
+    image: adobe/s3mock:latest
+    container_name: light-interview-s3mock
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: ${MEDIA_S3_BUCKET:-light-interview-media}
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${S3_API_PORT:-9090}:9090"
+
+  # ---- 应用本身（可选）：docker compose --profile full up -d ----
+  # 默认不启动，这样"只起基础设施 + 本地跑应用"的开发方式和以前完全一样。
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: light-interview-backend:local
+    container_name: light-interview-backend
+    profiles: ["full"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-interview}
+      DATABASE_USERNAME: ${POSTGRES_USER:-postgres}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      REDIS_HOST: redis
+      SERVER_PORT: 8088
+      MEDIA_PROVIDER: local
+      MEDIA_STORAGE_DIR: /app/data/media
+      PRACTICE_FLYWAY_ENABLED: "true"
+      # 没配 Key 也能起来：出题回退内置题库、语音降级为字幕（见 README 的演示模式）
+      Ali_API_KEY: ${Ali_API_KEY:-}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:-change-this-in-docker}
+      TRUST_FORWARDED_FOR: "true"
+      APP_ENV: ${APP_ENV:-local}
+      # 代码沙箱要在容器里再起容器，默认关；本机开发仍由 .env 单独打开
+      CODE_RUNNER_ENABLED: ${CODE_RUNNER_ENABLED_IN_DOCKER:-false}
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${BACKEND_PORT:-8088}:8088"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8088/actuator/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    volumes:
+      - app-media:/app/data/media
+
+  web:
+    build:
+      context: web
+      dockerfile: Dockerfile
+    image: light-interview-web:local
+    container_name: light-interview-web
+    profiles: ["full"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    # 容器用 8080，避免和本地 vite（5173）抢端口
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${WEB_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+volumes:
+  postgres-data:
+  redis-data:
+  app-media:
