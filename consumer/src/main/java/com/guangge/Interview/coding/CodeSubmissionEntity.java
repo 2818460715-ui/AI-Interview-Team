@@ -4,17 +4,19 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import lombok.Getter;
-import lombok.Setter;
+// import lombok.Getter;
+// import lombok.Setter;
 
 import java.time.Instant;
 import java.util.UUID;
 
-/** 一次作答与判分结果。 */
+/**
+ * 一次作答与判分结果。
+ */
 @Entity
 @Table(name = "code_submissions")
-@Getter
-@Setter
+// @Getter
+// @Setter
 public class CodeSubmissionEntity {
 
     @Id
@@ -65,4 +67,132 @@ public class CodeSubmissionEntity {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    public UUID getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(UUID sessionId) {
+        this.sessionId = sessionId;
+    }
+
+    public UUID getQuestionId() {
+        return questionId;
+    }
+
+    public void setQuestionId(UUID questionId) {
+        this.questionId = questionId;
+    }
+
+    public String getOwnerId() {
+        return ownerId;
+    }
+
+    public void setOwnerId(String ownerId) {
+        this.ownerId = ownerId;
+    }
+
+    public String getAnswerText() {
+        return answerText;
+    }
+
+    public void setAnswerText(String answerText) {
+        this.answerText = answerText;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public int getPassedCases() {
+        return passedCases;
+    }
+
+    public void setPassedCases(int passedCases) {
+        this.passedCases = passedCases;
+    }
+
+    public int getTotalCases() {
+        return totalCases;
+    }
+
+    public void setTotalCases(int totalCases) {
+        this.totalCases = totalCases;
+    }
+
+    public Long getRuntimeMs() {
+        return runtimeMs;
+    }
+
+    public void setRuntimeMs(Long runtimeMs) {
+        this.runtimeMs = runtimeMs;
+    }
+
+    public String getStdout() {
+        return stdout;
+    }
+
+    public void setStdout(String stdout) {
+        this.stdout = stdout;
+    }
+
+    public String getStderr() {
+        return stderr;
+    }
+
+    public void setStderr(String stderr) {
+        this.stderr = stderr;
+    }
+
+    public String getCompileOutput() {
+        return compileOutput;
+    }
+
+    public void setCompileOutput(String compileOutput) {
+        this.compileOutput = compileOutput;
+    }
+
+    public String getCaseResultsJson() {
+        return caseResultsJson;
+    }
+
+    public void setCaseResultsJson(String caseResultsJson) {
+        this.caseResultsJson = caseResultsJson;
+    }
+
+    public String getAiReviewJson() {
+        return aiReviewJson;
+    }
+
+    public void setAiReviewJson(String aiReviewJson) {
+        this.aiReviewJson = aiReviewJson;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
+    }
 }

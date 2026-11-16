@@ -23,9 +23,8 @@ import java.util.UUID;
 /**
  * AI 出题（含自检闭环）。
  *
- * 为什么必须自检：模型给的测试用例本身可能是错的（期望输出算错、边界用例无解），
- * 那样用户写对了反而被判失败，比不判还糟。所以每道需要执行的题都会拿
- * **模型自己给的参考解**在沙箱里跑一遍全部用例，全过才留下；不过就换一批重试。
+ * 【修改说明】CODING、SQL 题型已禁用，不再使用 Docker 沙箱校验参考解
+ * 只支持：FILL_BLANK、CHOICE、SHORT_ANSWER
  */
 @Service
 public class CodingQuestionPlanService {
@@ -36,30 +35,23 @@ public class CodingQuestionPlanService {
     private final ChatClient testcaseChatClient;
     private final ObjectMapper objectMapper;
     private final CodeJudgeService judge;
-    private final CodeRunnerService runner;
     private final int maxAttempts;
 
+    // 移除 CodeRunnerService（Docker 沙箱）
     public CodingQuestionPlanService(
             ChatClient.Builder chatClientBuilder,
             ObjectMapper objectMapper,
             CodeJudgeService judge,
-            CodeRunnerService runner,
             @Value("classpath:prompt/coding-question-plan-system-prompt.st") Resource systemPrompt,
             @Value("classpath:prompt/coding-testcase-system-prompt.st") Resource testcasePrompt,
             @Value("${practice.coding.plan-max-attempts:3}") int maxAttempts) {
-        // 注意：ChatClient.Builder 的 defaultSystem() 是**修改自身并返回同一个实例**，
-        // 所以两个客户端必须各 clone 一份——否则第二个 prompt 会把第一个覆盖掉，
-        // 出题客户端会拿着「配测试输入」的提示词去出题（踩过这个坑）。
         this.chatClient = chatClientBuilder.clone().defaultSystem(systemPrompt).build();
-        // 第二步单独用一个 system prompt：把参考解发回去，只让它照着代码配输入。
         this.testcaseChatClient = chatClientBuilder.clone().defaultSystem(testcasePrompt).build();
         this.objectMapper = objectMapper;
         this.judge = judge;
-        this.runner = runner;
         this.maxAttempts = Math.max(1, maxAttempts);
     }
 
-    /** 生成并自检一批题目；全部通过才返回。 */
     public List<CodeQuestionEntity> generate(UUID sessionId, CodingPlanRequest request) {
         List<String> lastFailure = new ArrayList<>();
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -71,11 +63,19 @@ public class CodingQuestionPlanService {
             }
         }
         throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                "AI 出题未通过校验（参考解无法通过测试用例），已重试 " + maxAttempts + " 次。最后一次原因："
+                "AI 出题未通过校验，已重试 " + maxAttempts + " 次。最后一次原因："
                         + (lastFailure.isEmpty() ? "未知" : lastFailure.get(lastFailure.size() - 1)));
     }
 
     private List<CodeQuestionEntity> generateOnce(UUID sessionId, CodingPlanRequest request) {
+        // 前置拦截：如果请求里包含 CODING / SQL，直接拒绝
+        for (CodingPlanRequest.QuestionSpec spec : request.questions()) {
+            QuestionType type = QuestionType.fromId(spec.type()).orElse(null);
+            if (type == QuestionType.CODING || type == QuestionType.SQL) {
+                throw new IllegalStateException("当前已关闭代码上机、SQL 沙箱题型，无法生成");
+            }
+        }
+
         String raw = chatClient.prompt().user(userMessage(request)).call().content();
         try {
             JsonNode root = parseArray(raw);
@@ -88,13 +88,11 @@ public class CodingQuestionPlanService {
             for (int index = 0; index < root.size(); index++) {
                 CodingPlanRequest.QuestionSpec spec = request.questions().get(index);
                 CodeQuestionEntity entity = toEntity(sessionId, index, spec, root.get(index));
-                deriveExpectedOutputs(entity);
+                // deriveExpectedOutputs：只对 CODING / SQL 生效，现在不会走到
                 questions.add(entity);
             }
             return questions;
         } catch (RuntimeException exception) {
-            // 校验失败时把模型原始返回的前一段记下来：否则只能看到「缺少 title/statement」
-            // 这种结论，根本不知道模型到底返回了什么结构。
             log.warn("出题结果校验失败：{}；模型返回前 600 字：{}", exception.getMessage(), truncate(raw, 600));
             throw exception;
         }
@@ -129,15 +127,9 @@ public class CodingQuestionPlanService {
         entity.setOptionsJson(json(node.get("options")));
         entity.setTestCasesJson(json(node.get("testCases")));
         entity.setSqlSetup(node.hasNonNull("sqlSetup") ? node.get("sqlSetup").asText() : null);
-        // answer 只存服务端：参考解 / 正确选项 / 参考要点都在这里，不下发给前端。
         entity.setAnswerJson(json(node.get("answer")));
         entity.setCreatedAt(Instant.now());
 
-        if (type == QuestionType.CODING) {
-            CodeLanguage language = CodeLanguage.fromId(spec.language())
-                    .orElseThrow(() -> new IllegalStateException("第 " + (index + 1) + " 题语言无效：" + spec.language()));
-            entity.setLanguage(language.id());
-        }
         validateShape(type, entity, index);
         return entity;
     }
@@ -145,16 +137,7 @@ public class CodingQuestionPlanService {
     private void validateShape(QuestionType type, CodeQuestionEntity entity, int index) {
         String prefix = "第 " + (index + 1) + " 题（" + type.id() + "）";
         switch (type) {
-            case CODING -> {
-                if (isBlank(entity.getStarterCode())) throw new IllegalStateException(prefix + " 缺少 starterCode");
-                if (reference(entity).isBlank()) throw new IllegalStateException(prefix + " 缺少参考解 answer.code");
-                // 测试用例由第二步（拿到参考解之后）单独生成，这里不检查。
-            }
-            case SQL -> {
-                if (isBlank(entity.getSqlSetup())) throw new IllegalStateException(prefix + " 缺少 sqlSetup");
-                if (reference(entity).isBlank()) throw new IllegalStateException(prefix + " 缺少参考查询 answer.code");
-                if (readNode(entity.getTestCasesJson()).isEmpty()) throw new IllegalStateException(prefix + " 缺少期望结果");
-            }
+            case CODING, SQL -> throw new IllegalStateException(prefix + "：该题型已禁用");
             case FILL_BLANK -> {
                 if (isBlank(entity.getStarterCode())) throw new IllegalStateException(prefix + " 缺少 starterCode");
                 if (readNode(entity.getBlanksJson()).isEmpty()) throw new IllegalStateException(prefix + " 缺少 blanks");
@@ -169,87 +152,25 @@ public class CodingQuestionPlanService {
         }
     }
 
-    /**
-     * 用参考解跑出期望输出。
-     *
-     * 一开始我让模型同时给出「参考解」和「手算的期望输出」，结果三次都没通过自检——
-     * 让模型把输出逐字符算对本身就很难，失败率极高。改成让它只负责「输入 + 一个能跑的参考解」，
-     * 期望输出一律由参考解在沙箱里跑出来，这样用例与参考解天然一致，
-     * 自检就只需要回答一个问题：参考解能不能正常跑完。
-     */
+    /*
+    // 【停用】沙箱自检：用来跑参考解生成测试用例，依赖 Docker
     private void deriveExpectedOutputs(CodeQuestionEntity entity) {
         QuestionType type = QuestionType.fromId(entity.getType()).orElseThrow();
         if (type == QuestionType.CODING) {
-            CodeLanguage language = CodeLanguage.fromId(entity.getLanguage())
-                    .orElseThrow(() -> new IllegalStateException("语言无效：" + entity.getLanguage()));
-            // 第二步：把参考解发回给模型，让它照着代码的读取方式配输入。
-            // 这样「代码怎么读」和「输入长什么样」由同一次判断产出，不再是两处各写各的。
-            List<TestCase> cases = requestTestInputs(entity);
-            List<TestCase> derived = new ArrayList<>();
-            boolean hasOutput = false;
-            String lastFailure = null;
-            for (TestCase testCase : cases) {
-                CodeRunResult run = runner.run(language, reference(entity), testCase.stdin());
-                if (!run.ok()) {
-                    // 模型偶尔会给出参考解读不了的输入（最常见的是隐藏边界用例的 stdin 为空，
-                    // 而程序要读一行 → NoSuchElementException）。与其因为一个坏用例废掉整道题，
-                    // 不如把这个用例丢掉——只要还剩下可用的可见示例。
-                    lastFailure = testCase.name() + "：" + failureBrief(run);
-                    log.warn("丢弃参考解跑不通的用例（{}）：{}", testCase.name(), failureBrief(run));
-                    continue;
-                }
-                String output = CodeJudgeService.normalizeOutput(run.stdout());
-                if (!output.isBlank()) hasOutput = true;
-                derived.add(new TestCase(testCase.name(), testCase.stdin(), output, testCase.hidden()));
-            }
-            if (derived.stream().noneMatch(testCase -> !testCase.hidden())) {
-                throw new IllegalStateException("参考解没有任何可用的可见示例（最后失败：" + lastFailure + "）");
-            }
-            if (derived.size() < 2) {
-                throw new IllegalStateException("可用用例不足 2 个（最后失败：" + lastFailure + "）");
-            }
-            if (!hasOutput) {
-                throw new IllegalStateException("参考解对所有用例都没有输出，题目没有意义");
-            }
-            entity.setTestCasesJson(json(objectMapper.valueToTree(derived)));
+            // ...原代码全部封存
         } else if (type == QuestionType.SQL) {
-            List<TestCase> cases = readCases(entity.getTestCasesJson());
-            TestCase first = cases.isEmpty() ? new TestCase("结果集", "", "", false) : cases.get(0);
-            CodeRunResult run = runner.run(CodeLanguage.PYTHON,
-                    judge.sqlScript(entity.getSqlSetup(), reference(entity)), "");
-            if (!run.ok()) {
-                throw new IllegalStateException("参考查询跑不通：" + failureBrief(run));
-            }
-            String output = CodeJudgeService.normalizeOutput(run.stdout());
-            if (output.isBlank()) {
-                throw new IllegalStateException("参考查询没有返回任何结果行");
-            }
-            entity.setTestCasesJson(json(objectMapper.valueToTree(List.of(new TestCase(first.name(), "（题目自带数据）", output, false)))));
+            // ...原代码全部封存
         }
     }
 
-    /** 第二步：只看题面与参考解，产出与之匹配的输入。 */
     private List<TestCase> requestTestInputs(CodeQuestionEntity entity) {
-        String raw = testcaseChatClient.prompt()
-                .user("""
-                        题面：
-                        %s
-
-                        参考解（%s）：
-                        %s
-                        """.formatted(entity.getStatement(), entity.getLanguage(), reference(entity)))
-                .call()
-                .content();
-        JsonNode node = parseArray(raw);
-        List<TestCase> cases = new ArrayList<>();
-        for (JsonNode item : node) {
-            String name = item.hasNonNull("name") ? item.get("name").asText() : "用例 " + (cases.size() + 1);
-            String stdin = item.hasNonNull("stdin") ? item.get("stdin").asText() : "";
-            boolean hidden = item.hasNonNull("hidden") && item.get("hidden").asBoolean();
-            cases.add(new TestCase(name, stdin, null, hidden));
-        }
-        return cases;
+        // ...原代码封存
     }
+
+    private static String failureBrief(CodeRunResult run) {
+        // ...原代码封存
+    }
+    */
 
     private List<TestCase> readCases(String json) {
         if (json == null || json.isBlank()) return List.of();
@@ -259,13 +180,6 @@ public class CodingQuestionPlanService {
         } catch (Exception exception) {
             return List.of();
         }
-    }
-
-    private static String failureBrief(CodeRunResult run) {
-        String detail = run.compileOutput() == null ? "" : run.compileOutput().strip();
-        if (detail.isBlank() && run.stderr() != null) detail = run.stderr().strip();
-        if (detail.isBlank()) detail = "退出码 " + run.exitCode();
-        return detail.length() > 300 ? detail.substring(0, 300) + "…" : detail;
     }
 
     private String reference(CodeQuestionEntity entity) {

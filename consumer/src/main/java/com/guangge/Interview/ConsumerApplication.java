@@ -9,7 +9,18 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-@SpringBootApplication
+@SpringBootApplication(excludeName = {
+		"com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeImageAutoConfiguration",
+		"com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeEmbeddingAutoConfiguration",
+		"com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeMultimodalEmbeddingAutoConfiguration",
+		"com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeVideoAutoConfiguration",
+		"com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeRerankAutoConfiguration",
+		"com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioSpeechAutoConfiguration",
+		"com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioTranscriptionAutoConfiguration",
+		"com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeChatAutoConfiguration",
+		"com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAgentAutoConfiguration",
+		"org.springframework.ai.model.chat.client.autoconfigure.ChatClientAutoConfiguration"
+})
 @EnableScheduling
 public class ConsumerApplication {
 

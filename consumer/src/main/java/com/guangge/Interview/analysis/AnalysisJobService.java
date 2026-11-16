@@ -17,6 +17,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Qualifier;
+
 
 import java.io.IOException;
 import java.time.Duration;
@@ -53,6 +55,7 @@ public class AnalysisJobService {
     private final PracticeAnswerRepository answers;
     private final MediaStorage mediaStorage;
     private final AsrProvider asrProvider;
+
     private final EvaluationProvider evaluationProvider;
     private final EvaluationResultValidator validator;
     private final PracticeQuestionCatalog questions;
@@ -71,7 +74,7 @@ public class AnalysisJobService {
             PracticeAnswerRepository answers,
             MediaStorage mediaStorage,
             AsrProvider asrProvider,
-            EvaluationProvider evaluationProvider,
+            @Qualifier("llmEvaluationProvider") EvaluationProvider evaluationProvider,
             EvaluationResultValidator validator,
             PracticeQuestionCatalog questions,
             AnalysisQueueMetrics metrics,

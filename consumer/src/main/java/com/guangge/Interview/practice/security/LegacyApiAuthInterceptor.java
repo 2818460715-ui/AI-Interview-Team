@@ -3,9 +3,7 @@ package com.guangge.Interview.practice.security;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.util.List;
@@ -24,6 +22,12 @@ public class LegacyApiAuthInterceptor implements HandlerInterceptor {
             "/frontend/", "/candidate/", "/interview/", "/resume/", "/fileupload/", "/image/", "/talk");
     private static final String LEGACY_AUDIO_STREAM = "/api/stream-audio";
 
+    // ✅ 放开的测试接口白名单
+    private static final List<String> PUBLIC_PATH = List.of(
+            "/frontend/test",
+            "/frontend/chat"
+    );
+
     private final OwnerResolver owners;
 
     public LegacyApiAuthInterceptor(OwnerResolver owners) {
@@ -32,7 +36,12 @@ public class LegacyApiAuthInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        if (!isLegacy(request.getRequestURI())) return true;
+        String uri = request.getRequestURI();
+        // 如果是公开接口，直接放行
+        if (PUBLIC_PATH.contains(uri)) {
+            return true;
+        }
+        if (!isLegacy(uri)) return true;
         owners.requireOwner(request.getHeader(HttpHeaders.AUTHORIZATION));
         return true;
     }

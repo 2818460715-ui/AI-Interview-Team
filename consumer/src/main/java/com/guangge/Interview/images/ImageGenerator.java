@@ -1,27 +1,24 @@
-package com.guangge.Interview.images;
-
-
-import org.springframework.ai.image.ImageModel;
-import org.springframework.ai.image.ImageOptionsBuilder;
-import org.springframework.ai.image.ImagePrompt;
-import org.springframework.ai.image.ImageResponse;
-import org.springframework.stereotype.Service;
-
-@Service
-public class ImageGenerator {
-    private final ImageModel imageModel;
-
-    public ImageGenerator(ImageModel imageModel) {
-        this.imageModel = imageModel;
-    }
-
-    public ImageResponse generate(String prompt) {
-        var options = ImageOptionsBuilder.builder()
-                .width(1024)
-                .height(1024)
-                .build();
-
-        var imagePrompt = new ImagePrompt(prompt, options);
-        return imageModel.call(imagePrompt);
-    }
-}
+//package com.guangge.Interview.images;
+//
+//import org.springframework.beans.factory.annotation.Autowired;
+//import org.springframework.web.bind.annotation.PostMapping;
+//import org.springframework.web.bind.annotation.RequestParam;
+//import org.springframework.web.bind.annotation.RestController;
+//
+//@RestController
+//public class ImageController {
+//
+//    private final ImageGenerator imageGenerator;
+//
+//    public ImageController(@Autowired(required = false) ImageGenerator imageGenerator) {
+//        this.imageGenerator = imageGenerator;
+//    }
+//
+//    @PostMapping("/image/generate")
+//    public Object generate(@RequestParam String prompt) {
+//        if (imageGenerator == null) {
+//            return "图片生成功能暂未开启";
+//        }
+//        return imageGenerator.generate(prompt);
+//    }
+//}

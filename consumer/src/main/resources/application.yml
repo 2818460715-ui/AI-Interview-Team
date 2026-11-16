@@ -1,7 +1,6 @@
 server:
   port: 8088
   address: 0.0.0.0
-
 spring:
   mail:
     protocol: smtp
@@ -22,7 +21,6 @@ spring:
     password: ${DATABASE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
     hikari:
-    # connection-init-sql: "CREATE EXTENSION IF NOT EXISTS vector;"
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -36,33 +34,29 @@ spring:
           max-idle: 8
           min-idle: 2
           max-wait: 300ms
-
-# ai 是顶级，和 spring、server 平级！
-ai:
-  debug:
-    echo-mode: false # true=回声调试，不调用大模型；调试完成改为 false
-  dashscope:
-    api-key: sk-ws-H.YEHIEPL.AJ2l.MEYCIQDdr_fQmuW4wKTyOuV6jYaHfdS00pq8gBXIDhPXvV7UlQIhAIz1tPDbvH_H_aNeJycrUfExngWPoVVB4eFxhDnbOH37
-    base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-    options:
-      model: qwen-plus
-      temperature: 0.7
-      top_p: 0.8
-      max-tokens: 800
-
-# pgvector 向量库，后续要用再取消注释
-# vectorstore:
-#   pgvector:
-#     index-type: HNSW
-#     distance-type: COSINE_DISTANCE
-#     initialize-schema: true
-#     dimensions: 1536
-#     schema-name: public
-#     table-name: vector_store
-#     max-document-batch-size: 10000
-
-# ========== 新增：功能开关 ==========
+  ai:
+    dashscope:
+      enabled: true
+      api-key: ${Ali_API_KEY:}
+      audio:
+        speech:
+          api-key: ${Ali_API_KEY:}
+        transcription:
+          api-key: ${Ali_API_KEY:}
+      chat:
+        options:
+          model: qwen-plus
+          temperature: 0.7
+          top_p: 0.8
+          max-tokens: 800
 feature:
   enable-free-chat: false
   enable-cohort: false
   enable-code-practice: false
+practice:
+  evaluation:
+    provider: llm
+ai:
+  enable: true
+  debug:
+    echo-mode: false

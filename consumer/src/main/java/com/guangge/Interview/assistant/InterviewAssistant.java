@@ -1,105 +1,80 @@
-//package com.guangge.Interview.assistant;
-//
-//import com.guangge.Interview.advisor.LoggingAdvisor;
-//import lombok.SneakyThrows;
-//import org.springframework.ai.chat.client.ChatClient;
-//import org.springframework.ai.chat.client.advisor.PromptChatMemoryAdvisor;
-//import org.springframework.ai.chat.memory.ChatMemory;
-//import org.springframework.ai.vectorstore.VectorStore;
-//import org.springframework.beans.factory.annotation.Value;
-//import org.springframework.core.io.Resource;
-//import org.springframework.stereotype.Service;
-//import reactor.core.publisher.Flux;
-//
-///**
-// * 面试助手
-// */
-//@Service
-//public class InterviewAssistant {
-//
-//    private final ChatClient chatClient;
-//    @SneakyThrows
-//    public InterviewAssistant(ChatClient.Builder modelBuilder, VectorStore vectorStore, ChatMemory chatMemory,
-//                              @Value("classpath:prompt/Interview-face2face-System-Prompt.st") Resource systemText) {
-//
-//        this.chatClient = modelBuilder.defaultSystem(systemText)
-//                .defaultAdvisors(
-//                        PromptChatMemoryAdvisor.builder(chatMemory).build(),
-//                        new LoggingAdvisor()
-//                )
-//                .defaultToolNames("getResumeByName","changeInterView","getResumeById")
-//                .build();
-//    }
-//
-//    public String chat(String chatId, String userMessageContent) {
-//
-//        return this.chatClient.prompt()
-//                .user(userMessageContent)
-//                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, chatId))
-//                .call().content();
-//    }
-//
-//    public Flux<String> chatByStream(String chatId, String userMessageContent) {
-//
-//        return this.chatClient.prompt()
-//                .user(userMessageContent)
-//                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, chatId))
-//                .stream().content();
-//    }
-//}
-
 package com.guangge.Interview.assistant;
 
-import com.guangge.Interview.advisor.LoggingAdvisor;
+import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.PromptChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
-/**
- * 面试助手（移除RAG，纯对话+记忆+工具调用）
- */
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
 @Service
+@ConditionalOnProperty(prefix = "ai", name = "enable", havingValue = "true", matchIfMissing = false)
 public class InterviewAssistant {
 
     private final ChatClient chatClient;
+    private final ChatMemory chatMemory;
+    private final String systemPrompt;
 
-    public InterviewAssistant(ChatClient.Builder modelBuilder,
-                              ChatMemory chatMemory,
-                              @Value("classpath:prompt/Interview-face2face-System-Prompt.st") Resource systemText) {
-
-        this.chatClient = modelBuilder
-                .defaultSystem(systemText)
-                .defaultAdvisors(
-                        PromptChatMemoryAdvisor.builder(chatMemory).build(),
-                        new LoggingAdvisor()
-                )
-                .defaultToolNames("getResumeByName","changeInterView","getResumeById")
+    public InterviewAssistant(ChatModel chatModel,
+                              @Qualifier("assistantChatMemory") ChatMemory chatMemory,
+                              @Value("classpath:prompt/Interview-face2face-System-Prompt.st") Resource systemPromptRes) throws Exception {
+        this.chatMemory = chatMemory;
+        this.systemPrompt = systemPromptRes.getContentAsString(StandardCharsets.UTF_8);
+        this.chatClient = ChatClient.builder(chatModel)
+                .defaultOptions(DashScopeChatOptions.builder()
+                        .model("qwen-plus")
+                        .temperature(0.7)
+                        .build())
                 .build();
     }
 
-    public String chat(String chatId, String userMessageContent) {
-        if (chatId == null || chatId.isBlank() || userMessageContent == null || userMessageContent.isBlank()) {
-            throw new IllegalArgumentException("chatId 和消息内容不能为空");
-        }
-        return this.chatClient.prompt()
-                .user(userMessageContent)
-                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, chatId))
+    public String chat(String chatId, String userMsg) {
+        List<Message> history = chatMemory.get(chatId);
+        UserMessage userMessage = new UserMessage(userMsg);
+
+        String resp = chatClient.prompt()
+                .system(systemPrompt)
+                .messages(history)
+                .user(userMsg)
                 .call()
                 .content();
+
+        String content = resp == null ? "" : resp;
+        chatMemory.add(chatId, userMessage);
+        chatMemory.add(chatId, new AssistantMessage(content));
+        return content;
     }
 
-    public Flux<String> chatByStream(String chatId, String userMessageContent) {
-        if (chatId == null || chatId.isBlank() || userMessageContent == null || userMessageContent.isBlank()) {
-            return Flux.error(new IllegalArgumentException("chatId 和消息内容不能为空"));
-        }
-        return this.chatClient.prompt()
-                .user(userMessageContent)
-                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, chatId))
+    public Flux<String> streamChat(String chatId, String userMsg) {
+        List<Message> history = chatMemory.get(chatId);
+        UserMessage userMessage = new UserMessage(userMsg);
+        StringBuilder sb = new StringBuilder();
+
+        return chatClient.prompt()
+                .system(systemPrompt)
+                .messages(history)
+                .user(userMsg)
                 .stream()
-                .content();
+                .content()
+                .doOnNext(sb::append)
+                .doOnComplete(() -> {
+                    chatMemory.add(chatId, userMessage);
+                    chatMemory.add(chatId, new AssistantMessage(sb.toString()));
+                });
+    }
+
+    // 和 Controller 对接的方法，参数改成英文，里面直接复用 streamChat
+    public Flux<String> chatByStream(String chatId, String userMsg) {
+        return streamChat(chatId, userMsg);
     }
 }

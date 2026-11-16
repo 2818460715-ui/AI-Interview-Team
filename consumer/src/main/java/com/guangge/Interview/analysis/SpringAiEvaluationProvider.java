@@ -3,12 +3,13 @@ package com.guangge.Interview.analysis;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
-
 /** Evaluation adapter backed by the Spring AI chat client. */
-@Component
-@ConditionalOnProperty(name = "practice.evaluation.provider", havingValue = "spring-ai", matchIfMissing = true)
+//@Component
+@Lazy
+@ConditionalOnProperty(name = "practice.evaluation.provider", havingValue = "spring-ai", matchIfMissing = false)
 public class SpringAiEvaluationProvider implements EvaluationProvider {
 
     private static final String PROMPT_VERSION = "practice-evaluation-v1";
@@ -18,6 +19,7 @@ public class SpringAiEvaluationProvider implements EvaluationProvider {
     private final String modelName;
 
     public SpringAiEvaluationProvider(
+            @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
             ChatClient.Builder chatClientBuilder,
             EvaluationResultValidator validator,
             @Value("classpath:prompt/practice-evaluation-system-prompt.st") Resource systemPrompt,

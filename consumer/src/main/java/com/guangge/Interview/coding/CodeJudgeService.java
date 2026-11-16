@@ -1,7 +1,7 @@
 package com.guangge.Interview.coding;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guangge.Interview.coding.dto.Blank;
 import com.guangge.Interview.coding.dto.CaseResult;
 import com.guangge.Interview.coding.dto.JudgeOutcome;
@@ -24,8 +24,8 @@ import java.util.stream.Collectors;
  *
  * 原则：能客观判的绝不交给模型 ——
  * <ul>
- *   <li>上机编程：跑测试用例（用户确认的「以运行结果为准」）</li>
- *   <li>SQL：在内存 SQLite 上执行，比对结果集</li>
+ *   <li>上机编程：跑测试用例（用户确认的「以运行结果为准」）【已关闭】</li>
+ *   <li>SQL：在内存 SQLite 上执行，比对结果集【已关闭】</li>
  *   <li>填空 / 选择：确定性比对</li>
  *   <li>简答：没有唯一答案，才交给模型按参考要点评分</li>
  * </ul>
@@ -37,12 +37,11 @@ public class CodeJudgeService {
     private static final Logger log = LoggerFactory.getLogger(CodeJudgeService.class);
     private static final double SHORT_ANSWER_PASS_SCORE = 60;
 
-    private final CodeRunnerService runner;
     private final ObjectMapper objectMapper;
     private final ShortAnswerGrader shortAnswerGrader;
 
-    public CodeJudgeService(CodeRunnerService runner, ObjectMapper objectMapper, ShortAnswerGrader shortAnswerGrader) {
-        this.runner = runner;
+    // 移除 CodeRunnerService（Docker 沙箱执行器）
+    public CodeJudgeService(ObjectMapper objectMapper, ShortAnswerGrader shortAnswerGrader) {
         this.objectMapper = objectMapper;
         this.shortAnswerGrader = shortAnswerGrader;
     }
@@ -53,16 +52,16 @@ public class CodeJudgeService {
                         "未知题型：" + question.getType()));
         String submitted = answer == null ? "" : answer;
         return switch (type) {
-            case CODING -> judgeCoding(question, submitted, visibleOnly);
-            case SQL -> judgeSql(question, submitted, visibleOnly);
+            case CODING -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "代码上机题型已关闭");
+            case SQL -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "SQL 沙箱判题已关闭");
             case FILL_BLANK -> judgeFillBlank(question, submitted);
             case CHOICE -> judgeChoice(question, submitted);
             case SHORT_ANSWER -> judgeShortAnswer(question, submitted);
         };
     }
 
-    // ---------- 上机编程 ----------
-
+    // ---------- 上机编程（已停用，保留代码方便后续恢复） ----------
+    /*
     private JudgeOutcome judgeCoding(CodeQuestionEntity question, String source, boolean visibleOnly) {
         if (source.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "代码不能为空");
@@ -127,15 +126,10 @@ public class CodeJudgeService {
         if (!run.ok()) return "运行出错（退出码 " + run.exitCode() + "）";
         return "输出与期望不一致";
     }
+    */
 
-    // ---------- SQL ----------
-
-    /**
-     * 在内存 SQLite 上执行候选人写的查询，比对结果集。
-     *
-     * 复用已拉取的 Python 镜像（自带 sqlite3），不需要额外引入数据库镜像，
-     * 同时天然拿到与代码题一致的沙箱隔离（禁网、限内存、限时）。
-     */
+    // ---------- SQL（已停用，保留代码方便后续恢复） ----------
+    /*
     private JudgeOutcome judgeSql(CodeQuestionEntity question, String query, boolean visibleOnly) {
         if (query.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "SQL 不能为空");
@@ -159,11 +153,7 @@ public class CodeJudgeService {
                 run.stdout(), run.stderr(), run.compileOutput(), results);
     }
 
-    /** 出题阶段也要用它把参考查询跑一遍，所以放开包级可见。 */
     String sqlScript(String setup, String query) {
-        // 用 base64 传 SQL，而不是把 JSON 转义后的文本塞进 Python 字面量：
-        // Python 会先把它还原（\n 变成真实换行），json.loads 再收到带换行的非法 JSON 直接报错。
-        // base64 全是 ASCII，没有转义歧义。
         String setupLiteral = base64(setup);
         String queryLiteral = base64(query);
         return """
@@ -186,9 +176,9 @@ public class CodeJudgeService {
         return java.util.Base64.getEncoder().encodeToString(
                 (value == null ? "" : value).getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
+    */
 
     // ---------- 编程填空 ----------
-
     private JudgeOutcome judgeFillBlank(CodeQuestionEntity question, String answer) {
         List<Blank> blanks = readList(question.getBlanksJson(), Blank.class);
         if (blanks.isEmpty()) {
@@ -212,10 +202,7 @@ public class CodeJudgeService {
     }
 
     // ---------- 选择题 ----------
-
     private JudgeOutcome judgeChoice(CodeQuestionEntity question, String answer) {
-        // 参考答案存成 {"keys":["A","D"]} 对象（提示词里定的 schema），不是裸数组——
-        // 之前直接按 List<String> 解析，一提交选择题就报「题目数据损坏」。
         Set<String> expected = new LinkedHashSet<>(answerArray(question, "keys").stream()
                 .map(item -> item.trim().toUpperCase()).toList());
         Set<String> actual = new LinkedHashSet<>(Arrays.stream(answer.split("[,，\\s]+"))
@@ -233,7 +220,6 @@ public class CodeJudgeService {
     }
 
     // ---------- 简答题 ----------
-
     private JudgeOutcome judgeShortAnswer(CodeQuestionEntity question, String answer) {
         if (answer.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "回答不能为空");
@@ -247,8 +233,6 @@ public class CodeJudgeService {
     }
 
     // ---------- 工具 ----------
-
-    /** 从参考答案对象里取数组字段（keys / points）。 */
     private List<String> answerArray(CodeQuestionEntity question, String field) {
         if (question.getAnswerJson() == null || question.getAnswerJson().isBlank()) return List.of();
         try {
@@ -281,14 +265,12 @@ public class CodeJudgeService {
         }
     }
 
-    /** 判题时忽略行尾空白与首尾空行，避免因为多余换行判错。 */
     static String normalizeOutput(String text) {
         if (text == null) return "";
         return text.replace("\r\n", "\n").replace("\r", "\n")
                 .lines().map(String::stripTrailing).collect(Collectors.joining("\n")).strip();
     }
 
-    /** 填空比对：忽略首尾与内部多余空白，但保留大小写（Java 关键字大小写有意义）。 */
     static String normalizeAnswer(String text) {
         return text == null ? "" : text.trim().replaceAll("\\s+", " ");
     }
